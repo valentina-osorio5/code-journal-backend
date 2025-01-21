@@ -1,11 +1,27 @@
 /* eslint-disable @typescript-eslint/no-unused-vars -- Remove me */
 import 'dotenv/config';
-import pg from 'pg';
+import pg, { Client } from 'pg';
 import express from 'express';
-import { ClientError, errorMiddleware } from './lib/index.js';
-import { ClientRequest } from 'http';
-import { Entry } from '../client/src/data.js';
-import argon2 from 'argon2';
+import { authMiddleware, ClientError, errorMiddleware } from './lib/index.js';
+import argon2, { hash } from 'argon2';
+import jwt from 'jsonwebtoken';
+
+type User = {
+  userId: number;
+  username: string;
+  hashedPassword: string;
+};
+type Auth = {
+  username: string;
+  password: string;
+};
+type Entry = {
+  entryId: number;
+  title: string;
+  notes: string;
+  photoUrl: string;
+};
+
 const db = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -19,14 +35,16 @@ if (!hashKey) throw new Error('TOKEN_SECRET not found in .env');
 const app = express();
 app.use(express.json());
 
-app.get('/api/entries', async (req, res, next) => {
+app.get('/api/entries', authMiddleware, async (req, res, next) => {
   console.log('/api/entries hit');
   try {
     const sql = `
-    select * from "entries" order by "entryId" desc;
+    select * from "entries"
+    where "userId" = $1
+    order by "entryId" desc;
     `;
 
-    const result = await db.query(sql);
+    const result = await db.query(sql, [req.user?.userId]);
     console.log(result.rows);
     const entries = result.rows;
 
@@ -39,10 +57,11 @@ app.get('/api/entries', async (req, res, next) => {
   }
 });
 
-app.get('/api/entries/:entryId', async (req, res, next) => {
+app.get('/api/entries/:entryId', authMiddleware, async (req, res, next) => {
   console.log('/api/entries/:entryId hit');
   try {
     const entryId = Number(req.params.entryId);
+    // validateEntryId(entryId);
     console.log(entryId);
     if (!Number.isInteger(+entryId)) {
       throw new ClientError(400, `Non-integer entryId: ${entryId}`);
@@ -51,24 +70,24 @@ app.get('/api/entries/:entryId', async (req, res, next) => {
     const sql = `
     select *
     from "entries"
-    where "entryId" = $1;
+    where "entryId" = $1 and "userId" = $2;
     `;
 
-    const params = [entryId];
-    const result = await db.query(sql, params);
+    // const params = [entryId];
+    const result = await db.query(sql, [entryId, req.user?.userId]);
     console.log(result.rows);
     const [entry] = result.rows;
-
+    // validateFound(entry, entryId);
     if (!entry) {
       throw new ClientError(400, `entryId ${entryId} not found`);
     }
-    res.json(entry);
+    res.status(200).json(entry);
   } catch (err) {
     next(err);
   }
 });
 
-app.post('/api/new-entry', async (req, res, next) => {
+app.post('/api/new-entry', authMiddleware, async (req, res, next) => {
   console.log('/api/new-entry endpoint hit');
   try {
     const { title, notes, photoUrl } = req.body;
@@ -89,7 +108,7 @@ app.post('/api/new-entry', async (req, res, next) => {
   }
 });
 
-app.put('/api/entries/:entryId', async (req, res, next) => {
+app.put('/api/entries/:entryId', authMiddleware, async (req, res, next) => {
   console.log('/api/entries/:entryId update hit!');
   try {
     const { entryId } = req.params;
@@ -118,7 +137,7 @@ app.put('/api/entries/:entryId', async (req, res, next) => {
   }
 });
 
-app.delete('/api/entries/:entryId', async (req, res, next) => {
+app.delete('/api/entries/:entryId', authMiddleware, async (req, res, next) => {
   console.log('/api/entries/:entryId delete hit');
 
   try {
@@ -145,21 +164,55 @@ app.delete('/api/entries/:entryId', async (req, res, next) => {
 // User Auth or Registration methods
 
 app.post('/api/auth/sign-up', async (req, res, next) => {
+  console.log('/api/auth/sign-up endpoint hit!');
   try {
     const { username, password } = req.body;
     if (!username || !password) {
       throw new ClientError(400, 'Username and Password are required.');
     }
-    const hashedPassword = argon2.hash(password);
+    const hashedPassword = await argon2.hash(password);
+    console.log(hashedPassword);
     const sql = `
       insert into "users" ("username","hashedPassword")
         values ($1,$2)
       returning "userId", "username", "createdAt";
     `;
     const params = [username, hashedPassword];
-    const result = await db.query(sql, params);
-    const newUser = result.rows[0];
+    const result = await db.query<User>(sql, params);
+    const newUser = result.rows;
     res.status(201).json(newUser);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/auth/sign-in', async (req, res, next) => {
+  console.log('/api/auth/sign-in endpoint hit!');
+
+  try {
+    const { username, password } = req.body as Partial<Auth>;
+    if (!username || !password) {
+      throw new ClientError(401, `Invalid login!`);
+    }
+
+    const sql = `
+    select "userId", "hashedPassword"
+      from "users"
+      where "username" = $1
+    `;
+    const params = [username];
+    const result = await db.query<User>(sql, params);
+    const [user] = result.rows;
+    if (!user) {
+      throw new ClientError(401, `Invalid login!`);
+    }
+    const { userId, hashedPassword } = user;
+    if (!(await argon2.verify(hashedPassword, password))) {
+      throw new ClientError(401, `Invalid login!`);
+    }
+    const payload = { userId, username };
+    const token = jwt.sign(payload, hashKey);
+    res.json({ token, user: payload });
   } catch (err) {
     next(err);
   }
