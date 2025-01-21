@@ -95,14 +95,14 @@ app.post('/api/new-entry', authMiddleware, async (req, res, next) => {
       throw new ClientError(400, 'Missing title, notes, or photoUrl');
     }
     const sql = `
-      insert into "entries" ("title", "notes", "photoUrl")
-        values ($1, $2, $3)
+      insert into "entries" ("userId","title", "notes", "photoUrl")
+        values ($1, $2, $3, $4)
         returning *;
     `;
-    const params = [title, notes, photoUrl];
+    const params = [req.user?.userId, title, notes, photoUrl];
     const result = await db.query<Entry>(sql, params);
     const newEntry = result.rows[0];
-    res.json(newEntry);
+    res.status(201).json(newEntry);
   } catch (err) {
     next(err);
   }
@@ -117,15 +117,21 @@ app.put('/api/entries/:entryId', authMiddleware, async (req, res, next) => {
     }
 
     const { title, notes, photoUrl } = req.body;
+    if (!title || !notes || !photoUrl) {
+      throw new ClientError(400, `Title, notes and photoUrl are required`);
+    }
+
     const sql = `
     update "entries"
-    set "title" = $1, "notes" = $2, "photoUrl" = $3
-    where "entryId" = $4
+    set "title" = $1,
+        "notes" = $2,
+        "photoUrl" = $3
+    where "entryId" = $4 and "userId" = $5
     returning *;
     `;
 
-    const params = [title, notes, photoUrl, entryId];
-    const result = await db.query(sql, params);
+    const params = [title, notes, photoUrl, entryId, req.user?.userId];
+    const result = await db.query<Entry>(sql, params);
     console.log(result.rows);
     const updateEntry = result.rows[0];
     if (!updateEntry) {
@@ -142,19 +148,22 @@ app.delete('/api/entries/:entryId', authMiddleware, async (req, res, next) => {
 
   try {
     const { entryId } = req.params;
+    // validateEntryId(entryId);
     if (!Number.isInteger(+entryId)) {
       throw new ClientError(400, `Non-integer entryId: ${entryId}`);
     }
     const sql = `
-    delete from "entries" where "entryId" = $1 returning *;
+    delete from "entries" where "entryId" = $1 and "userId" = $2
+    returning *;
     `;
-    const params = [entryId];
-    const result = await db.query(sql, params);
+    const params = [entryId, req.user?.userId];
+    const result = await db.query<Entry>(sql, params);
     console.log(result.rows);
     const deleteEntry = result.rows[0];
     if (!deleteEntry) {
       throw new ClientError(404, `entry ${entryId} doesn't exist!`);
     }
+    // validateFound(deleteEntry, entryId);
     res.sendStatus(204);
   } catch (err) {
     next(err);
