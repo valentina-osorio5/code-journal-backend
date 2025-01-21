@@ -5,12 +5,16 @@ import express from 'express';
 import { ClientError, errorMiddleware } from './lib/index.js';
 import { ClientRequest } from 'http';
 import { Entry } from '../client/src/data.js';
+import argon2 from 'argon2';
 const db = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false,
   },
 });
+
+const hashKey = process.env.TOKEN_SECRET;
+if (!hashKey) throw new Error('TOKEN_SECRET not found in .env');
 
 const app = express();
 app.use(express.json());
@@ -133,6 +137,29 @@ app.delete('/api/entries/:entryId', async (req, res, next) => {
       throw new ClientError(404, `entry ${entryId} doesn't exist!`);
     }
     res.sendStatus(204);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// User Auth or Registration methods
+
+app.post('/api/auth/sign-up', async (req, res, next) => {
+  try {
+    const { username, password } = req.body;
+    if (!username || !password) {
+      throw new ClientError(400, 'Username and Password are required.');
+    }
+    const hashedPassword = argon2.hash(password);
+    const sql = `
+      insert into "users" ("username","hashedPassword")
+        values ($1,$2)
+      returning "userId", "username", "createdAt";
+    `;
+    const params = [username, hashedPassword];
+    const result = await db.query(sql, params);
+    const newUser = result.rows[0];
+    res.status(201).json(newUser);
   } catch (err) {
     next(err);
   }
