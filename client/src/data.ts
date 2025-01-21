@@ -39,6 +39,7 @@ export async function addEntry(entry: Entry): Promise<Entry> {
   const newEntry = {
     ...entry,
     entryId: data.nextEntryId++,
+    s,
   };
   data.entries.unshift(newEntry);
   writeData(data);
