@@ -4,7 +4,7 @@ import pg from 'pg';
 import express from 'express';
 import { ClientError, errorMiddleware } from './lib/index.js';
 import { ClientRequest } from 'http';
-
+import { Entry } from '../client/src/data.js';
 const db = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -38,9 +38,8 @@ app.get('/api/entries', async (req, res, next) => {
 app.get('api/entries/:entryId', async (req, res, next) => {
   console.log('api/entries/:entryId hit');
   try {
-    const { entryId } = req.params;
+    const entryId = req.params.entryId;
     console.log(entryId);
-
     if (!Number.isInteger(+entryId)) {
       throw new ClientError(400, `Non-integer entryId: ${entryId}`);
     }
@@ -60,6 +59,27 @@ app.get('api/entries/:entryId', async (req, res, next) => {
       throw new ClientError(400, `entryId ${entryId} not found`);
     }
     res.json(entry);
+  } catch (err) {
+    next(err);
+  }
+});
+
+app.post('/api/new-entry', async (req, res, next) => {
+  console.log('/api/new-entry endpoint hit');
+  try {
+    const { title, notes, photoUrl } = req.body;
+    if (!title || !notes || !photoUrl) {
+      throw new ClientError(400, 'Missing title, notes, or photoUrl');
+    }
+    const sql = `
+      insert into "entries" ("title", "notes", "photoUrl")
+        values ($1, $2, $3)
+        returning *;
+    `;
+    const params = [title, notes, photoUrl];
+    const result = await db.query<Entry>(sql, params);
+    const newEntry = result.rows[0];
+    res.json(newEntry);
   } catch (err) {
     next(err);
   }
