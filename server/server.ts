@@ -14,7 +14,7 @@ const db = new pg.Pool({
 const app = express();
 app.use(express.json());
 
-app.get('/', async (req, res, next) => {
+app.get('/api/entries', async (req, res, next) => {
   console.log('/api/entries hit');
   try {
     const sql = `
