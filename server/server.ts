@@ -61,7 +61,7 @@ app.get('/api/entries/:entryId', authMiddleware, async (req, res, next) => {
   console.log('/api/entries/:entryId hit');
   try {
     const entryId = Number(req.params.entryId);
-    // validateEntryId(entryId);
+    validateEntryId(entryId);
     console.log(entryId);
     if (!Number.isInteger(+entryId)) {
       throw new ClientError(400, `Non-integer entryId: ${entryId}`);
@@ -232,3 +232,25 @@ app.use(errorMiddleware);
 app.listen(process.env.PORT, () => {
   console.log(`express server listening on port ${process.env.PORT}`);
 });
+
+function validateEntryId(entryId: number): void {
+  if (!Number.isInteger(entryId) || entryId <= 0) {
+    throw new ClientError(400, '"entryId" must be a postive integer');
+  }
+}
+
+function validateEntry(entry: Entry): void {
+  const { title, notes, photoUrl } = entry;
+  if (!title || !notes || !photoUrl) {
+    throw new ClientError(
+      400,
+      '"title", "notes", and "photoUrl" are required fields'
+    );
+  }
+}
+
+function validateFound(entry: Entry, entryId: number): void {
+  if (!entry) {
+    throw new ClientError(404, `Entry with id ${entryId} not found`);
+  }
+}
