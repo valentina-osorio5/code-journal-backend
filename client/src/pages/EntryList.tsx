@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaPencilAlt } from 'react-icons/fa';
 import { Entry, readEntries } from '../data';
+import { useUser } from '../components/useUser';
 
 export function EntryList() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<unknown>();
+  const { user } = useUser();
 
   useEffect(() => {
     async function load() {
@@ -19,8 +21,12 @@ export function EntryList() {
         setIsLoading(false);
       }
     }
-    load();
-  }, []);
+    if (user) {
+      load();
+    } else {
+      setEntries([]);
+    }
+  }, [user]);
 
   if (isLoading) return <div>Loading...</div>;
   if (error) {
@@ -51,6 +57,8 @@ export function EntryList() {
               <EntryCard key={entry.entryId} entry={entry} />
             ))}
           </ul>
+          {user && entries.length === 0 && <div>No entries found.</div>}
+          {!user && <div>Not signed in.</div>}
         </div>
       </div>
     </div>

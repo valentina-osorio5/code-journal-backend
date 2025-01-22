@@ -1,12 +1,10 @@
 import { type FormEvent, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useUser } from './useUser';
 
 /**
- * Form that signs in a user.
+ * Form that registers a user.
  */
-export function SignInForm() {
-  const { handleSignIn } = useUser();
+export function RegistrationForm() {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -21,17 +19,21 @@ export function SignInForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(userData),
       };
-      const res = await fetch('/api/auth/sign-in', req);
+      const res = await fetch('/api/auth/sign-up', req);
       if (!res.ok) {
         throw new Error(`fetch Error ${res.status}`);
       }
-      const { user, token } = await res.json();
-      handleSignIn(user, token);
-      console.log('Signed In', user);
-      console.log('Received token:', token);
-      navigate('/');
+      const user = await res.json();
+      console.log('Registered', user);
+      console.log(
+        `You can check the database with: psql -d userManagement -c 'select * from users'`
+      );
+      alert(
+        `Successfully registered ${user.username} as userId ${user.userId}.`
+      );
+      navigate('/auth/sign-in');
     } catch (err) {
-      alert(`Error signing in: ${err}`);
+      alert(`Error registering user: ${err}`);
     } finally {
       setIsLoading(false);
     }
@@ -41,7 +43,7 @@ export function SignInForm() {
     <div className="container">
       <div className="row">
         <div className="column-full d-flex justify-between">
-          <h1>Sign In</h1>
+          <h1>Register</h1>
         </div>
       </div>
       <form onSubmit={handleSubmit}>
@@ -70,7 +72,7 @@ export function SignInForm() {
         <div className="row">
           <div className="column-full d-flex justify-between">
             <button disabled={isLoading} className="btn btn-primary">
-              Sign In
+              Register
             </button>
           </div>
         </div>
